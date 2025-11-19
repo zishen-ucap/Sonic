@@ -108,7 +108,7 @@ For Multi-GPU inference, you can use the following command:
 ```shell
   torchrun --nproc_per_node=8 demo_ulysses.py '/path/to/input_image' '/path/to/input_audio' '/path/to/output_video' --dit_fsdp --ulysses_size 8
 ```
-[n_sample_frames](https://github.com/zishen-ucap/Sonic/blob/707de1ef0e5bcf20f57b23cf92eb111878d0afc9/config/inference/sonic.yaml#L9 must be an integer multiple of `ulysses_size`.
+[n_sample_frames](https://github.com/zishen-ucap/Sonic/blob/5ffb83adfeeea2111830150237998ef9c249ab5b/config/inference/sonic.yaml#L9) must be an integer multiple of `ulysses_size`.
 
  
 ## 🔗 Citation
