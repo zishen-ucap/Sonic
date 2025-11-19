@@ -6,7 +6,7 @@ audio2bucket_checkpoint_path: "checkpoints/Sonic/audio2bucket.pth"
 weight_dtype: 'fp16'  # [fp16, fp32]
 
 num_inference_steps: 25
-n_sample_frames: 25
+n_sample_frames: 64
 fps: 12.5
 decode_chunk_size: 8
 motion_bucket_scale: 1.0

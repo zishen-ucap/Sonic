@@ -14,11 +14,12 @@ from transformers import WhisperModel, CLIPVisionModelWithProjection, AutoFeatur
 from src.utils.util import save_videos_grid, seed_everything
 from src.dataset.test_preprocess import process_bbox, image_audio_to_tensor
 from src.models.base.unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel, add_ip_adapters
-from src.pipelines.pipeline_sonic import SonicPipeline
+from src.pipelines.pipeline_sonic import SonicPipeline, sp_call
 from src.models.audio_adapter.audio_proj import AudioProjModel
 from src.models.audio_adapter.audio_to_bucket import Audio2bucketModel
 from src.utils.RIFE.RIFE_HDv3 import RIFEModel
 from src.dataset.face_align.align import AlignImage
+from src.distributed.util import get_world_size, DDPWrapper
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -122,14 +123,18 @@ def test(
     return video
 
 
+
 class Sonic():
     config_file = os.path.join(BASE_DIR, 'config/inference/sonic.yaml')
     config = OmegaConf.load(config_file)
 
-    def __init__(self, 
-                 device_id=0,
-                 enable_interpolate_frame=True,
-                 ):
+    def __init__(
+            self,
+            device_id=0,
+            dit_fsdp=False,
+            use_sp=False,
+            enable_interpolate_frame=True, 
+        ):
         
         config = self.config
         config.use_interframe = enable_interpolate_frame
@@ -216,7 +221,13 @@ class Sonic():
             scheduler=val_noise_scheduler,
         )
         pipe = pipe.to(device=device, dtype=weight_dtype)
-
+        
+        if use_sp:
+            pipe.unet = DDPWrapper(
+                pipe.unet,
+                device_ids=[device_id],
+                find_unused_parameters=True
+                )
 
         self.pipe = pipe
         self.whisper = whisper
@@ -224,6 +235,24 @@ class Sonic():
         self.audio2bucket = audio2bucket
         self.image_encoder = image_encoder
         self.device = device
+
+        if use_sp:
+            self.sp_size = get_world_size()
+        else:
+            self.sp_size = 1
+
+        print(f'config.n_sample_frames={config.n_sample_frames},self.sp_size={self.sp_size}')
+        assert (
+            config.n_sample_frames % self.sp_size == 0
+        ), f"config.n_sample_frames cannot be divided by world_size"
+
+
+        if use_sp:
+            print(f'use sp_call')
+            pipe.__class__.__call__ = sp_call
+
+        self.rank = device_id
+        self.use_sp = use_sp
 
         print('init done')
 
@@ -298,6 +327,7 @@ class Sonic():
         else:
             resolution = f'{width}x{height}'
 
+
         video = test(
             pipe,
             config,
@@ -323,11 +353,12 @@ class Sonic():
                 results.append(middle)
             results.append(out[:, :, video_len-1])
             video = torch.stack(results, 2).cpu()
-        
-        save_videos_grid(video, video_path, n_rows=video.shape[0], fps=config.fps * 2 if config.use_interframe else config.fps)
-        ffmpeg_command = f'ffmpeg -i "{video_path}" -i "{audio_path}" -s {resolution} -vcodec libx264 -acodec aac -crf 18 -shortest -y "{audio_video_path}"'
-        os.system(ffmpeg_command)
-        os.remove(video_path)  # Use os.remove instead of rm for Windows compatibility
+
+        if self.rank == 0:
+            save_videos_grid(video, video_path, n_rows=video.shape[0], fps=config.fps * 2 if config.use_interframe else config.fps)
+            ffmpeg_command = f'ffmpeg -i "{video_path}" -i "{audio_path}" -s {resolution} -vcodec libx264 -acodec aac -crf 18 -shortest -y "{audio_video_path}"'
+            os.system(ffmpeg_command)
+            os.remove(video_path)  # Use os.remove instead of rm for Windows compatibility
         
         return 0
         

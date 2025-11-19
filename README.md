@@ -97,13 +97,17 @@ or manully download [pretrain model](https://drive.google.com/drive/folders/1oe8
 
 
 ### Run demo
+For Single-GPU inference, you can use the following command:
 ```shell
   python3 demo.py \
   '/path/to/input_image' \
   '/path/to/input_audio' \
   '/path/to/output_video'
 ```
-
+For Multi-GPU inference, you can use the following command:
+```shell
+  torchrun --nproc_per_node=4 demo_ulysses.py '/path/to/input_image' '/path/to/input_audio' '/path/to/output_video' --dit_fsdp --ulysses_size 4
+```
 
 
  

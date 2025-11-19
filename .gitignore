@@ -134,3 +134,4 @@ dmypy.json
 res_path/
 tmp_path/
 flagged/
+checkpoints/
